@@ -10,7 +10,7 @@ This UserScript allows you to download files from a Moodle course and creates a 
 ## Installation
 
 1. Install a user script manager extension like Tampermonkey.
-2. Click here to install.
+2. Click [here](https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js) to install.
    
 ## Usage
 
