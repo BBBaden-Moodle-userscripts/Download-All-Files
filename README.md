@@ -23,14 +23,16 @@ This UserScript allows you to download files from a Moodle course and creates a 
 
 ![Download All Files Button](https://cdn-icons-png.flaticon.com/512/16/16096.png)
 
-## Disclaimer
+# Disclaimer
 
-This script is provided as-is without any warranty. Use it responsibly and adhere to your institution's policies regarding software usage.
+**Note: This script is distributed under the terms of the GNU General Public License v3.0 (GPL-3.0).**
+
+This script is provided without any warranty and is subject to the terms and conditions of the GPL-3.0 license. Users are encouraged to review and comply with the provisions outlined in the [GPL-3.0 license](https://www.gnu.org/licenses/gpl-3.0.html).
+
+Please use this script responsibly and ensure compliance with the GPL-3.0 license and any other applicable regulations. The author shall not be held responsible for any consequences arising from the use or misuse of this script.
+
+For more details about the GPL-3.0 license, refer to the [official GNU GPL-3.0 documentation](https://www.gnu.org/licenses/gpl-3.0.html).
 
 ## Author
 
 - **PianoNic** - [GitHub Profile](https://github.com/PianoNic)
-
-## License
-
-This project is licensed under the ... License.
