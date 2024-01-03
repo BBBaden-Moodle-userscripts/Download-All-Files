@@ -1,3 +1,5 @@
+[![Static Badge](https://img.shields.io/badge/Install-Script-dark_green?style=for-the-badge&color=dark_green)](https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js)
+
 # Moodle File Downloader UserScript
 
 This UserScript allows you to download files from a Moodle course and creates a zip archive containing all the downloaded files. It is designed to work on Moodle pages that match the specified URL.
