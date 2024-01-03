@@ -21,7 +21,7 @@ This UserScript allows you to download files from a Moodle course and creates a 
 
 ## Screenshots
 
-![Download All Files Button](https://cdn-icons-png.flaticon.com/512/16/16096.png)
+![Download All Files Button]([https://cdn-icons-png.flaticon.com/512/16/16096.png](https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/blob/main/img/Screenshot%202024-01-03%20110529.png?raw=true))
 
 # Disclaimer
 
