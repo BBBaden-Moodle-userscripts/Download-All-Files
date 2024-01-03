@@ -6,7 +6,7 @@ This UserScript allows you to download files from a Moodle course and creates a 
 
 ## Features
 
-- Combines all files on current Moodle page and creates a zip archive.
+- Combines all files on current Moodle page into one zip archive.
 - Provides a convenient "Download All Files" button.
 
 ## Installation
