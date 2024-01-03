@@ -39,23 +39,19 @@
 
     function createDownloadButton(callback) {
         const section = document.createElement('section');
-        section.classList.add('block_html', 'block', 'card', 'mb-3');
-        section.setAttribute('role', 'complementary');
-        section.setAttribute('data-block', 'html');
+        section.classList.add('card');
 
         const div = document.createElement('div');
-        div.classList.add('card-body', 'p-3');
+        div.classList.add('p-3');
 
         const h5 = document.createElement('h5');
-        h5.id = 'instance-20663-header';
-        h5.classList.add('card-title', 'd-inline');
         h5.textContent = 'Download All Files';
 
         const cardTextDiv = document.createElement('div');
-        cardTextDiv.classList.add('card-text', 'content', 'mt-3');
+        cardTextDiv.classList.add('mt-3');
 
         const downloadButton = document.createElement('button');
-        downloadButton.classList.add('btn', 'btn-outline-secondary', 'btn-sm', 'text-nowrap');
+        downloadButton.classList.add('btn', 'btn-outline-secondary', 'btn-sm');
         downloadButton.textContent = 'Download';
 
         downloadButton.addEventListener('click', callback);
