@@ -2,8 +2,15 @@
 // @name         Moodle File Downloader
 // @namespace    http://tampermonkey.net/
 // @version      0.1
+//
 // @description  Download files from Moodle and create a zip archive
 // @author       PianoNic
+//
+// @downloadURL https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
+// @updateURL   https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
+// @homepageURL https://github.com/BBBaden-Moodle-userscripts/Download-All-Files
+// @supportURL  https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/issues
+//
 // @match        https://moodle.bbbaden.ch/course/view.php*
 // @grant        GM_download
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
