@@ -6,14 +6,14 @@ This UserScript allows you to download files from a Moodle course and creates a 
 
 ## Features
 
-- Combines all files on current Moodle page into one zip archive.
+- Combines all files on the current Moodle page into one zip archive.
 - Provides a convenient "Download All Files" button.
 
 ## Installation
 
 1. Install a user script manager extension like [Violentmonkey](https://violentmonkey.github.io/#installation).
 2. Click [here](https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js) to install.
-   
+
 ## Usage
 
 1. Navigate to the Moodle course page that matches the specified URL.
@@ -33,8 +33,10 @@ This script is provided without any warranty and is subject to the terms and con
 
 Please use this script responsibly and ensure compliance with the GPL-3.0 license and any other applicable regulations. The author shall not be held responsible for any consequences arising from the use or misuse of this script.
 
-For more details about the GPL-3.0 license, refer to the [official GNU GPL-3.0 documentation](https://www.gnu.org/licenses/gpl-3.0.html).
-
 ## Author
 
 - **PianoNic** - [GitHub Profile](https://github.com/PianoNic)
+
+## Additional Script
+
+For users who prefer a Python solution, there is also a Python script available on my GitHub repository: [Moodle File Downloader (Python)](https://github.com/Pianonic/Moodle-File-Downloader)
