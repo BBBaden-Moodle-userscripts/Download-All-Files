@@ -14,7 +14,7 @@
 // @match        https://moodle.bbbaden.ch/course/view.php*
 // @grant        GM_download
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
-// @icon         https://cdn.discordapp.com/attachments/1014802078201286807/1192031054807179364/MoodleDownload.png
+// @icon         https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/blob/main/ico/icon.png?raw=true
 // ==/UserScript==
 
 (function () {
