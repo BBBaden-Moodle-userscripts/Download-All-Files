@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle File Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      0.2
 //
 // @description  Download files from Moodle and create a zip archive
 // @author       PianoNic
