@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Moodle File Downloader with Progress Bar
+// @name         Moodle File Downloader
 // @namespace    http://tampermonkey.net/
 // @version      0.3
 //
