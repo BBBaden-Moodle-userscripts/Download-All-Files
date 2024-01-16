@@ -25,13 +25,13 @@ This UserScript allows you to download files from a Moodle course and creates a 
 
 ![Download All Files Button](https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/blob/main/img/Screenshot%202024-01-03%20110529.png)
 
-# Disclaimer
+## Disclaimer
 
-**Note: This script is distributed under the terms of the GNU General Public License v3.0 (GPL-3.0).**
+**Note: This script is distributed under the terms of the MIT License.**
 
-This script is provided without any warranty and is subject to the terms and conditions of the GPL-3.0 license. Users are encouraged to review and comply with the provisions outlined in the [GPL-3.0 license](https://www.gnu.org/licenses/gpl-3.0.html).
+This script is provided without any warranty and is subject to the terms and conditions of the MIT License.
 
-Please use this script responsibly and ensure compliance with the GPL-3.0 license and any other applicable regulations. The author shall not be held responsible for any consequences arising from the use or misuse of this script.
+Please use this script responsibly and ensure compliance with the MIT License and any other applicable regulations. The author shall not be held responsible for any consequences arising from the use or misuse of this script.
 
 ## Author
 
