@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Moodle File Downloader
+// @name         Moodle File Downloader with Progress Bar
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 //
-// @description  Download files from Moodle and create a zip archive
+// @description  Download files from Moodle and create a zip archive with progress bar
 // @author       PianoNic
 //
 // @downloadURL https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
@@ -37,6 +37,22 @@
             });
     }
 
+    function createProgressBar() {
+        const progressBar = document.createElement('progress');
+        progressBar.id = 'download-progress';
+        progressBar.value = 0;
+        progressBar.max = 100;
+        return progressBar;
+    }
+
+    function updateProgressBar(percentage) {
+        const progressBar = document.getElementById('download-progress');
+        if (progressBar) {
+            progressBar.value = percentage;
+        }
+    }
+
+
     function createDownloadButton(callback) {
         const section = document.createElement('section');
         section.classList.add('card');
@@ -54,9 +70,20 @@
         downloadButton.classList.add('btn', 'btn-outline-secondary', 'btn-sm');
         downloadButton.textContent = 'Download';
 
-        downloadButton.addEventListener('click', callback);
+        const progressBar = createProgressBar();
+
+        downloadButton.addEventListener('click', () => {
+            callback();
+            // Hide the button after clicking to prevent multiple clicks
+            downloadButton.style.display = 'none';
+            cardTextDiv.appendChild(progressBar);
+        });
+
+        const reportDiv = document.createElement('div');
+        reportDiv.id = "report";
 
         cardTextDiv.appendChild(downloadButton);
+        cardTextDiv.appendChild(reportDiv);
         div.appendChild(h5);
         div.appendChild(cardTextDiv);
         section.appendChild(div);
@@ -73,8 +100,19 @@
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
+
+                // Hide the download button and progress bar
+                const downloadButton = document.querySelector('.btn.btn-outline-secondary.btn-sm');
+                const progressBar = document.getElementById('download-progress');
+                if (downloadButton) {
+                    downloadButton.style.display = 'none';
+                }
+                if (progressBar) {
+                    progressBar.style.display = 'none';
+                }
             });
     }
+
 
     function main() {
         const h1Tag = document.querySelector('div.page-header-headings h1.h2');
@@ -84,9 +122,17 @@
         const activityDivs = document.querySelectorAll('div.activityname');
         const zip = new JSZip();
         const downloadPromises = [];
+        const totalFiles = activityDivs.length;
+        let filesDownloaded = 0;
 
-        activityDivs.forEach(div => {
+        let successCount = 0;
+        let failureCount = 0;
+        const failedLinks = [];
+
+        activityDivs.forEach((div, index) => {
             const anchor = div.querySelector('a.aalink.stretched-link');
+            const statusSpan = document.createElement('span'); // Create a span for status
+
             if (anchor) {
                 const href = anchor.getAttribute('href');
                 if (href.includes('mod/resource')) {
@@ -95,16 +141,47 @@
                             const contentHeader = response.headers.get('content-disposition');
                             const fileName = contentHeader.match(/filename="(.+)"/)[1];
                             zip.file(fileName, blob);
-                            console.log('Downloaded and added to zip:', fileName);
+                            statusSpan.textContent = ' "✅ Successfully added to Archive"'; // Success indicator
+                            console.log('Downloaded and added to zip:', fileName, "Filename:", href);
+                            successCount += 1;
                         })
-                        .catch(error => console.error(error));
+                        .catch(error => {
+                            statusSpan.textContent = ' "❌ Failed adding to Archive"'; // Error indicator
+                            console.error(error, "At Downloadlink:", href);
+                            failureCount += 1;
+                            failedLinks.push(href);
+                        })
+                        .finally(() => {
+                            filesDownloaded += 1;
+                            updateProgressBar((filesDownloaded / totalFiles) * 100);
+                        });
+
                     downloadPromises.push(downloadPromise);
+                    anchor.appendChild(statusSpan); // Append the status indicator to the anchor element
                 }
             }
         });
 
         Promise.all(downloadPromises)
-            .then(() => generateZipAndDownload(zip, sanitizedTitle));
+            .then(() => {
+                generateZipAndDownload(zip, sanitizedTitle);
+                const reportSection = document.getElementById('report');
+
+                // Create elements to display the values
+                const successCountElement = document.createElement('p');
+                successCountElement.textContent = `Success Count: ${successCount}`;
+
+                const failureCountElement = document.createElement('p');
+                failureCountElement.textContent = `Failure Count: ${failureCount}`;
+
+                const failedLinksElement = document.createElement('ul');
+                failedLinksElement.innerHTML = failedLinks.map(link => `<li><a href="${link}" target="_blank">${link}</a></li>`).join('');
+
+                // Append elements to the section
+                reportSection.appendChild(successCountElement);
+                reportSection.appendChild(failureCountElement);
+                reportSection.appendChild(failedLinksElement);
+            });
     }
 
     const asideElement = document.getElementById('block-region-side-pre');
