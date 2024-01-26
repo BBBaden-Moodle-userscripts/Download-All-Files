@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle File Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.4
 //
 // @description  Download files from Moodle and create a zip archive with progress bar
 // @author       PianoNic
@@ -51,7 +51,6 @@
             progressBar.value = percentage;
         }
     }
-
 
     function createDownloadButton(callback) {
         const section = document.createElement('section');
@@ -113,7 +112,6 @@
             });
     }
 
-
     function main() {
         const h1Tag = document.querySelector('div.page-header-headings h1.h2');
         const title = h1Tag.textContent.trim();
@@ -128,64 +126,98 @@
         let successCount = 0;
         let failureCount = 0;
         const failedLinks = [];
+        const successfulDownloads = [];
+        const failedDownloads = [];
+
+        function downloadWithRetry(href, retries = 2) {
+            const statusSpan = document.createElement('span');
+
+            function attemptDownload() {
+                downloadFile(href)
+                    .then(({ response, blob }) => {
+                        const contentHeader = response.headers.get('content-disposition');
+                        const fileName = contentHeader.match(/filename="(.+)"/)[1];
+                        zip.file(fileName, blob);
+                        statusSpan.textContent = ' "✅ Successfully added to Archive"';
+                        successCount += 1;
+                        successfulDownloads.push({ fileName, href });
+                    })
+                    .catch(error => {
+                        statusSpan.textContent = ` "❌ Failed adding to Archive" (Retries left: ${retries})`;
+
+                        if (retries > 0) {
+                            console.error(error, "Retrying...", "At Downloadlink:", href);
+                            retries -= 1;
+                            attemptDownload();
+                        } else {
+                            console.error(error, "No more retries. Skipping...", "At Downloadlink:", href);
+                            failureCount += 1;
+                            failedLinks.push(href);
+                            failedDownloads.push(href);
+                        }
+                    })
+                    .finally(() => {
+                        filesDownloaded += 1;
+                        updateProgressBar((filesDownloaded / totalFiles) * 100);
+                    });
+            }
+
+            attemptDownload();
+            return statusSpan;
+        }
 
         activityDivs.forEach((div, index) => {
             const anchor = div.querySelector('a.aalink.stretched-link');
-            const statusSpan = document.createElement('span'); // Create a span for status
-
             if (anchor) {
                 const href = anchor.getAttribute('href');
                 if (href.includes('mod/resource')) {
-                    const downloadPromise = downloadFile(href)
-                        .then(({ response, blob }) => {
-                            const contentHeader = response.headers.get('content-disposition');
-                            const fileName = contentHeader.match(/filename="(.+)"/)[1];
-                            zip.file(fileName, blob);
-                            statusSpan.textContent = ' "✅ Successfully added to Archive"'; // Success indicator
-                            console.log('Downloaded and added to zip:', fileName, "Filename:", href);
-                            successCount += 1;
-                        })
-                        .catch(error => {
-                            statusSpan.textContent = ' "❌ Failed adding to Archive"'; // Error indicator
-                            console.error(error, "At Downloadlink:", href);
-                            failureCount += 1;
-                            failedLinks.push(href);
-                        })
-                        .finally(() => {
-                            filesDownloaded += 1;
-                            updateProgressBar((filesDownloaded / totalFiles) * 100);
-                        });
-
-                    downloadPromises.push(downloadPromise);
-                    anchor.appendChild(statusSpan); // Append the status indicator to the anchor element
+                    const statusSpan = downloadWithRetry(href);
+                    anchor.appendChild(statusSpan);
+                    downloadPromises.push(statusSpan);
                 }
             }
         });
 
-        Promise.all(downloadPromises)
-            .then(() => {
-                generateZipAndDownload(zip, sanitizedTitle);
-                const reportSection = document.getElementById('report');
-
-                // Create elements to display the values
-                const successCountElement = document.createElement('p');
-                successCountElement.textContent = `Success Count: ${successCount}`;
-
-                const failureCountElement = document.createElement('p');
-                failureCountElement.textContent = `Failure Count: ${failureCount}`;
-
-                const failedLinksElement = document.createElement('ul');
-                failedLinksElement.innerHTML = failedLinks.map(link => `<li><a href="${link}" target="_blank">${link}</a></li>`).join('');
-
-                // Append elements to the section
-                reportSection.appendChild(successCountElement);
-                reportSection.appendChild(failureCountElement);
-                reportSection.appendChild(failedLinksElement);
+        Promise.all(downloadPromises.map(statusSpan => {
+            return new Promise(resolve => {
+                const interval = setInterval(() => {
+                    if (statusSpan.textContent.includes('✅') || statusSpan.textContent.includes('❌')) {
+                        clearInterval(interval);
+                        resolve();
+                    }
+                }, 100);
             });
-    }
+        }))
+        .then(() => {
+            generateZipAndDownload(zip, sanitizedTitle);
+            const reportSection = document.getElementById('report');
 
-    const asideElement = document.getElementById('block-region-side-pre');
-    if (asideElement) {
-        asideElement.appendChild(createDownloadButton(main));
-    }
+            const successCountElement = document.createElement('p');
+            successCountElement.textContent = `Success Count: ${successCount}`;
+
+            const failureCountElement = document.createElement('p');
+            failureCountElement.textContent = `Failure Count: ${failureCount}`;
+
+            const failedLinksElement = document.createElement('ul');
+            failedLinksElement.innerHTML = failedLinks.map(link => `<li><a href="${link}" target="_blank">${link}</a></li>`).join('');
+
+            reportSection.appendChild(successCountElement);
+            reportSection.appendChild(failureCountElement);
+            reportSection.appendChild(failedLinksElement);
+
+            // Prepare data for console.table
+            const tableData = [
+                { 'Status': 'Success', 'Count': successCount },
+                { 'Status': 'Failed', 'Count': failureCount }
+            ];
+
+            // Display table in the console for successful and failed downloads
+            console.table(tableData);
+        });
+        }
+
+        const asideElement = document.getElementById('block-region-side-pre');
+        if (asideElement) {
+            asideElement.appendChild(createDownloadButton(main));
+        }
 })();
