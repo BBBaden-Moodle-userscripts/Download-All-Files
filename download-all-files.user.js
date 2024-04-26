@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle File Downloader
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.6
 // @description  Download files from Moodle and create a zip archive with progress bar
 // @author       PianoNic
 // @downloadURL https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
@@ -11,6 +11,7 @@
 // @match        https://moodle.bbbaden.ch/course/view.php*
 // @grant        GM_download
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.slim.min.js
 // @icon         https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/blob/main/ico/icon.png?raw=true
 // ==/UserScript==
 
@@ -38,48 +39,35 @@
     }
 
     function createProgressBar() {
-        const progressBar = document.createElement('progress');
-        progressBar.id = 'download-progress';
-        progressBar.value = 0;
-        progressBar.max = 100;
-        return progressBar;
+        return $('<progress>', {
+            id: 'download-progress',
+            value: 0,
+            max: 100
+        });
     }
 
     function updateProgressBar(percentage) {
-        const progressBar = document.getElementById('download-progress');
-        if (progressBar) {
-            progressBar.value = percentage;
-        }
+        $('#download-progress').val(percentage);
     }
 
     function createDownloadButton(callback) {
-        const section = document.createElement('section');
-        section.classList.add('card');
+        var section = $('<section>').addClass('card');
+        var div = $('<div>').addClass('p-3');
+        var h5 = $('<h5>').text('Download All Files');
+        var cardTextDiv = $('<div>').addClass('mt-3');
+        var downloadButton = $('<button>').addClass('btn btn-outline-secondary btn-sm').text('Download');
+        var progressBar = createProgressBar();
+        var reportDiv = $('<div>').attr('id', 'report');
 
-        const div = document.createElement('div');
-        div.classList.add('p-3');
+        downloadButton.on('click', async () => {
 
-        const h5 = document.createElement('h5');
-        h5.textContent = 'Download All Files';
-
-        const cardTextDiv = document.createElement('div');
-        cardTextDiv.classList.add('mt-3');
-
-        const downloadButton = document.createElement('button');
-        downloadButton.classList.add('btn', 'btn-outline-secondary', 'btn-sm');
-        downloadButton.textContent = 'Download';
-
-        const progressBar = createProgressBar();
-
-        downloadButton.addEventListener('click', async () => {
-            callback();
-            // Hide the button after clicking to prevent multiple clicks
-            downloadButton.style.display = 'none';
-            cardTextDiv.appendChild(progressBar);
+            downloadButton.hide();
+            cardTextDiv.append(progressBar);
+            await callback();
 
             await new Promise(resolve => {
                 const interval = setInterval(() => {
-                    if (progressBar.value === 100) {
+                    if (progressBar.val() === 100) {
                         clearInterval(interval);
                         resolve();
                     }
@@ -87,45 +75,30 @@
             });
         });
 
-        const reportDiv = document.createElement('div');
-        reportDiv.id = "report";
-
-        cardTextDiv.appendChild(downloadButton);
-        cardTextDiv.appendChild(reportDiv);
-        div.appendChild(h5);
-        div.appendChild(cardTextDiv);
-        section.appendChild(div);
+        cardTextDiv.append(downloadButton, reportDiv);
+        div.append(h5, cardTextDiv);
+        section.append(div);
 
         return section;
     }
 
     async function generateZipAndDownload(zip, sanitizedTitle) {
         const blob = await zip.generateAsync({ type: 'blob' });
+        const link = $('<a>', {
+            href: URL.createObjectURL(blob),
+            download: sanitizedTitle + '.zip'
+        }).appendTo('body');
 
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = sanitizedTitle + '.zip';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        // Hide the download button and progress bar
-        const downloadButton = document.querySelector('.btn.btn-outline-secondary.btn-sm');
-        const progressBar = document.getElementById('download-progress');
-        if (downloadButton) {
-            downloadButton.style.display = 'none';
-        }
-        if (progressBar) {
-            progressBar.style.display = 'none';
-        }
+        link[0].click();
+        link.remove();
+        $('.btn.btn-outline-secondary.btn-sm, #download-progress').hide();
     }
 
     async function main() {
-        const h1Tag = document.querySelector('div.page-header-headings h1.h2');
-        const title = h1Tag.textContent.trim();
+        const title = $('div.page-header-headings h1.h2').text().trim();
         const sanitizedTitle = title.replace(/[\\/:"*?<>|]/g, '').replace(/ /g, '_');
 
-        const activityDivs = document.querySelectorAll('div.modtype_resource');
+        const activityDivs = $('div.activity-grid ');
         const zip = new JSZip();
         const totalFiles = activityDivs.length;
         let filesDownloaded = 0;
@@ -136,84 +109,46 @@
         const successfulDownloads = [];
         const failedDownloads = [];
 
-        // Function to create a badge element asynchronously
-        async function createBadgeAsync(color, message) {
-            var badge = document.createElement("span");
-
-            badge.className = "badge badge-pill";
-            badge.style.backgroundColor = color;
-
-            var strong = document.createElement("strong");
-
-            strong.textContent = message;
-
-            badge.appendChild(strong);
-
-            return badge;
-        }
-
         async function downloadWithRetry(href) {
-            var badgeDiv;
-
             try {
                 const { response, blob } = await fetchFile(href);
                 const contentHeader = response.headers.get('content-disposition');
                 const fileName = contentHeader.match(/filename="(.+)"/)[1];
                 zip.file(fileName, blob);
-                badgeDiv = await createBadgeAsync("green", "Erfolgreiches Speichern im Archiv!");
                 successCount += 1;
                 successfulDownloads.push({ fileName, href });
+                return $('<span>').addClass('btn btn-success btn-sm text-nowrap').css('background-color', 'green').text('Erfolgreiches Speichern im Archiv!');
             } catch (error) {
-                badgeDiv = await createBadgeAsync("red", "Fehler beim Speichern im Archiv!");
                 failureCount += 1;
                 failedLinks.push(href);
                 failedDownloads.push(href);
+                return $('<span>').addClass('btn btn-danger btn-sm text-nowrap').css('background-color', 'red').text('Fehler beim Speichern im Archiv!');
             } finally {
                 filesDownloaded += 1;
                 updateProgressBar((filesDownloaded / totalFiles) * 100);
             }
-
-            return badgeDiv;
         }
 
-        for (const div of activityDivs) {
-            const anchor = div.querySelector('a.aalink.stretched-link');
-            if (anchor) {
-                const href = anchor.getAttribute('href');
-                if (href.includes('mod/resource')) {
-                    const status = await downloadWithRetry(href);
-                    div.appendChild(status);
-                }
+
+         for (const div of activityDivs) {
+            const anchor = $(div).find('a.aalink.stretched-link');
+            if (anchor.length && anchor.attr('href').includes('mod/resource')) {
+                const status = await downloadWithRetry(anchor.attr('href'));
+                $(div).append(status);
             }
         }
 
-        generateZipAndDownload(zip, sanitizedTitle);
 
-        const reportSection = document.getElementById('report');
+        await generateZipAndDownload(zip, sanitizedTitle);
 
-        const successCountElement = document.createElement('p');
-        successCountElement.textContent = `Success Count: ${successCount}`;
+        const reportSection = $('#report');
+        reportSection.append(`<p>Success Count: ${successCount}</p>`, `<p>Failure Count: ${failureCount}</p>`);
+        const failedLinksList = $('<ul>').html(failedLinks.map(link => `<li><a href="${link}" target="_blank">${link}</a></li>`).join(''));
+        reportSection.append(failedLinksList);
 
-        const failureCountElement = document.createElement('p');
-        failureCountElement.textContent = `Failure Count: ${failureCount}`;
-
-        const failedLinksElement = document.createElement('ul');
-        failedLinksElement.innerHTML = failedLinks.map(link => `<li><a href="${link}" target="_blank">${link}</a></li>`).join('');
-
-        reportSection.appendChild(successCountElement);
-        reportSection.appendChild(failureCountElement);
-        reportSection.appendChild(failedLinksElement);
-
-        // Display table in the console for successful and failed downloads
-        console.table([
-            { 'Status': 'Success', 'Count': successCount },
-            { 'Status': 'Failed', 'Count': failureCount }
-        ]);
+        console.table([{ 'Status': 'Success', 'Count': successCount }, { 'Status': 'Failed', 'Count': failureCount }]);
     }
 
-    const asideElement = document.getElementById('block-region-side-pre');
-    if (asideElement) {
-        asideElement.appendChild(createDownloadButton(main));
-    }
-  console.log("Loaded Moodle Files Downloader!")
+    $('#block-region-side-pre').append(createDownloadButton(main));
+    console.log("Loaded Moodle Files Downloader!");
 })();
