@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle File Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.6
+// @version      1.5
 // @description  Download files from Moodle and create a zip archive with progress bar
 // @author       PianoNic
 // @downloadURL https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
