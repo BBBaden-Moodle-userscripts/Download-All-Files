@@ -125,7 +125,7 @@
         const title = h1Tag.textContent.trim();
         const sanitizedTitle = title.replace(/[\\/:"*?<>|]/g, '').replace(/ /g, '_');
 
-        const activityDivs = document.querySelectorAll('div.activity-basis.d-flex.align-items-center');
+        const activityDivs = document.querySelectorAll('div.modtype_resource');
         const zip = new JSZip();
         const totalFiles = activityDivs.length;
         let filesDownloaded = 0;
