@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Moodle File Downloader
+// @name         Download All Files
 // @namespace    http://tampermonkey.net/
 // @version      1.6
 // @description  Download files from Moodle and create a zip archive with progress bar
@@ -32,7 +32,7 @@
         Logger.info('downloadallfiles', 'On extensions page - bridge only mode');
         return;
     }
-    
+
     async function fetchFile(url, retries = 2) {
         while (retries > 0) {
             try {
