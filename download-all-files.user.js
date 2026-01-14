@@ -21,15 +21,15 @@
 (async function () {
     'use strict';
 
-    Logger.info('filedownloader', 'v1.6 - Initializing');
+    Logger.info('downloadallfiles', 'v1.6 - Initializing');
 
     // Initialize bridge connection for userscript manager
     const connection = new Script();
-    Logger.success('filedownloader', 'Bridge connection initialized');
+    Logger.success('downloadallfiles', 'Bridge connection initialized');
 
     // If on extensions page, only initialize bridge and return
     if (window.location.href === 'https://moodle.bbbaden.ch/userscript/extensions') {
-        Logger.info('filedownloader', 'On extensions page - bridge only mode');
+        Logger.info('downloadallfiles', 'On extensions page - bridge only mode');
         return;
     }
     
@@ -165,5 +165,5 @@
     }
 
     $('#block-region-side-pre').append(createDownloadButton(main));
-    Logger.success('filedownloader', 'Initialization complete');
+    Logger.success('downloadallfiles', 'Initialization complete');
 })();
