@@ -18,6 +18,18 @@
 (async function () {
     'use strict';
 
+    Logger.info('filedownloader', 'v1.6 - Initializing');
+
+    // Initialize bridge connection for userscript manager
+    const connection = new Script();
+    Logger.success('filedownloader', 'Bridge connection initialized');
+
+    // If on extensions page, only initialize bridge and return
+    if (window.location.href === 'https://moodle.bbbaden.ch/userscript/extensions') {
+        Logger.info('filedownloader', 'On extensions page - bridge only mode');
+        return;
+    }
+    
     async function fetchFile(url, retries = 2) {
         while (retries > 0) {
             try {
@@ -150,5 +162,5 @@
     }
 
     $('#block-region-side-pre').append(createDownloadButton(main));
-    console.log("Loaded Moodle Files Downloader!");
+    Logger.success('quickid', 'Initialization complete');
 })();
