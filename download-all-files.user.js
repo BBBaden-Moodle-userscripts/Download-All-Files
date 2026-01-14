@@ -4,14 +4,17 @@
 // @version      1.6
 // @description  Download files from Moodle and create a zip archive with progress bar
 // @author       PianoNic
-// @downloadURL https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
-// @updateURL   https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
-// @homepageURL https://github.com/BBBaden-Moodle-userscripts/Download-All-Files
-// @supportURL  https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/issues
+// @downloadURL  https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
+// @updateURL    https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
+// @homepageURL  https://github.com/BBBaden-Moodle-userscripts/Download-All-Files
+// @supportURL   https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/issues
 // @match        https://moodle.bbbaden.ch/course/view.php*
+// @match        https://moodle.bbbaden.ch/userscript/extensions
 // @grant        GM_download
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.slim.min.js
+// @require      https://github.com/BBBaden-Moodle-userscripts/LoggingLibrary/raw/refs/heads/main/Logging.lib.user.js
+// @require      https://github.com/BBBaden-Moodle-userscripts/UserscriptBridgeLib/raw/main/userscriptBridge.lib.js
 // @icon         https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/blob/main/ico/icon.png?raw=true
 // ==/UserScript==
 
