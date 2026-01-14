@@ -165,5 +165,5 @@
     }
 
     $('#block-region-side-pre').append(createDownloadButton(main));
-    Logger.success('quickid', 'Initialization complete');
+    Logger.success('filedownloader', 'Initialization complete');
 })();
