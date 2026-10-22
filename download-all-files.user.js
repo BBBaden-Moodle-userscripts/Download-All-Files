@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Download All Files
 // @namespace    http://tampermonkey.net/
-// @version      2.4
-// @description  Download all files, folders, assignment files, pages and links of a Moodle course as a zip archive, optionally with a folder per section
+// @version      2.5
+// @description  Download all files, folders, assignment files, quiz results, pages and links of a Moodle course as a zip archive, optionally with a folder per section
 // @author       PianoNic
 // @downloadURL  https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
 // @updateURL    https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
@@ -26,7 +26,7 @@
     'use strict';
 
     if (UserscriptBridge.registerScript() || !UserscriptBridge.runOnce()) return;
-    Logger.info('downloadallfiles', 'v2.4 - Initializing');
+    Logger.info('downloadallfiles', 'v2.5 - Initializing');
 
     const courseId = new URLSearchParams(window.location.search).get('id');
     const sesskey = document.querySelector('a[href*="logout.php?sesskey="]')?.href.match(/sesskey=([^&]+)/)?.[1];
@@ -42,8 +42,8 @@
         }
     };
 
-    // Files, folders, assignment files, pages (saved as .html) and links (saved as .html redirecting to the target)
-    const DOWNLOADABLE_MODULES = ['resource', 'folder', 'assign', 'page', 'url'];
+    // Files, folders, assignment files, quiz results and pages (saved as .html) and links
+    const DOWNLOADABLE_MODULES = ['resource', 'folder', 'assign', 'quiz', 'page', 'url'];
 
     // All files and folders of the course, including sections that are only loaded on demand
     // (e.g. the Tiles format). Uses the same web service as the Moodle 4.0+ course page.
@@ -162,40 +162,123 @@ ${body}
         return new Blob([html], { type: 'text/html' });
     }
 
-    // forceview shows Moodle's link page instead of redirecting to the (cross-origin) target
-    async function linkFile(link) {
-        let target = link.url;
+    // Saves Moodle content as a standalone page. Moodle's stylesheets are kept and URLs made absolute,
+    // so it looks like Moodle and its images load while online and logged in.
+    function moodleHtmlFile(doc, title, content) {
+        const clone = content.cloneNode(true);
+        // Controls without function in a saved file (flag question, back to course, ...)
+        clone.querySelectorAll('script, noscript, form input[type="hidden"], .questionflag, .singlebutton, .continuebutton, .submitbtns, #mod_quiz_navblock, form[action*="/course/view.php"], a.btn[href*="/course/view.php"]')
+            .forEach(el => el.remove());
+        // The icon font is not loaded from a local file, keep the meaning as plain characters
+        clone.querySelectorAll('i.icon, i.fa').forEach(icon => {
+            const symbol = /fa-(check|circle-check)\b/.test(icon.className) ? ['✓', 'green']
+                : /fa-(xmark|times|remove|circle-xmark)\b/.test(icon.className) ? ['✗', '#c00'] : null;
+            if (!symbol) return icon.remove();
+            const span = document.createElement('span');
+            span.textContent = symbol[0];
+            span.style.cssText = `color: ${symbol[1]}; font-weight: bold;`;
+            span.title = icon.title || icon.getAttribute('aria-label') || '';
+            icon.replaceWith(span);
+        });
+        // Absolute Moodle URLs, except links to other files saved next to this one
+        clone.querySelectorAll('[src], [href]').forEach(el => {
+            if (el.hasAttribute('data-local')) return el.removeAttribute('data-local');
+            for (const attribute of ['src', 'href']) {
+                const value = el.getAttribute(attribute);
+                if (value && !value.startsWith('#')) el.setAttribute(attribute, new URL(value, window.location.origin).href);
+            }
+        });
+        const heading = document.createElement('h1');
+        heading.className = 'h2 mb-4';
+        heading.textContent = title;
+        clone.prepend(heading);
+        const styles = [...doc.querySelectorAll('link[rel="stylesheet"][href]')]
+            .map(link => `<link rel="stylesheet" href="${escapeHtml(new URL(link.getAttribute('href'), window.location.origin).href)}">`)
+            .join('\n');
+        return htmlFile(title, `<div class="container py-4">\n${clone.innerHTML}\n</div>`, styles);
+    }
+
+    async function getLinkTarget(link) {
         try {
+            // forceview shows Moodle's link page instead of redirecting to the (cross-origin) target
             const doc = await fetchDocument(link.url + '&forceview=1');
             const found = doc.querySelector('.urlworkaround a[href], #region-main iframe[src], #region-main object[data]');
-            target = found?.getAttribute('href') || found?.getAttribute('src') || found?.getAttribute('data') || target;
+            return found?.getAttribute('href') || found?.getAttribute('src') || found?.getAttribute('data') || link.url;
         } catch (error) {
             Logger.warn('downloadallfiles', 'Could not read link target, linking to Moodle instead', link.url);
+            return link.url;
+        }
+    }
+
+    // "html": page that opens the target in any browser, "url": Internet shortcut (Windows)
+    async function linkFile(link, format) {
+        const target = await getLinkTarget(link);
+        if (format === 'url') {
+            return { blob: new Blob([`[InternetShortcut]\r\nURL=${target.replace(/[\r\n]/g, '')}\r\n`], { type: 'text/plain' }), extension: 'url' };
         }
         const safeTarget = escapeHtml(target);
-        return htmlFile(link.name, `<p><a href="${safeTarget}">${safeTarget}</a></p>`,
+        const blob = htmlFile(link.name, `<p><a href="${safeTarget}">${safeTarget}</a></p>`,
             `<meta http-equiv="refresh" content="0; url=${safeTarget}">`);
+        return { blob, extension: 'html' };
     }
 
-    // Images and links inside the page still point to Moodle and need a login
     async function pageFile(page) {
         const doc = await fetchDocument(page.url);
-        const content = doc.querySelector('#region-main .box.generalbox') || doc.querySelector('#region-main [role="main"]');
+        const content = doc.querySelector('#region-main [role="main"]') || doc.querySelector('#region-main');
         if (!content) throw new Error('Page content not found');
-        return htmlFile(page.name, `<h1>${escapeHtml(page.name)}</h1>\n${content.innerHTML}`);
+        return moodleHtmlFile(doc, page.name, content);
     }
 
-    // One entry per file to download. Folder and assignment files know their path,
+    // Quiz results: an overview of all attempts and every attempt that may be reviewed.
+    // Nothing is saved for quizzes without own attempts.
+    async function getQuizFiles(quiz) {
+        const doc = await fetchDocument(quiz.url);
+        const main = doc.querySelector('#region-main [role="main"]') || doc.querySelector('#region-main');
+        if (!main?.querySelector('.quizreviewsummary, .quizattemptsummary')) return [];
+
+        const quizName = sanitize(quiz.name) || 'Test';
+        const reviewLinks = [...main.querySelectorAll('a[href*="/mod/quiz/review.php?attempt="]')]
+            .filter(a => new URL(a.getAttribute('href'), window.location.origin).origin === window.location.origin);
+        const reviews = [...new Set(reviewLinks.map(a => new URL(a.getAttribute('href'), window.location.origin).href))];
+
+        // The overview links to the saved attempts next to it instead of Moodle
+        reviewLinks.forEach(a => {
+            const index = reviews.indexOf(new URL(a.getAttribute('href'), window.location.origin).href);
+            a.setAttribute('href', encodeURIComponent(`Versuch ${index + 1}.html`));
+            a.setAttribute('data-local', '');
+        });
+
+        return [
+            { ...quiz, path: `${quizName}/Übersicht.html`, blob: moodleHtmlFile(doc, quiz.name, main) },
+            ...reviews.map((url, index) => ({
+                ...quiz,
+                module: 'quizreview',
+                url: url + '&showall=1',
+                name: `${quiz.name} - Versuch ${index + 1}`,
+                path: `${quizName}/Versuch ${index + 1}.html`
+            }))
+        ];
+    }
+
+    async function quizReviewFile(review) {
+        const doc = await fetchDocument(review.url);
+        const content = doc.querySelector('#region-main [role="main"]') || doc.querySelector('#region-main');
+        if (!content?.querySelector('.que, .quizreviewsummary')) throw new Error('Review not available');
+        return moodleHtmlFile(doc, review.name, content);
+    }
+
+    // One entry per file to download. Folder, assignment and quiz files know their path,
     // resources get their file name from the download response.
     async function getFiles(resources) {
         const files = [];
         for (const resource of resources) {
-            if (!LINKED_FILES[resource.module]) {
+            const collect = LINKED_FILES[resource.module] ? getLinkedFiles : resource.module === 'quiz' ? getQuizFiles : null;
+            if (!collect) {
                 files.push(resource);
                 continue;
             }
             try {
-                files.push(...await getLinkedFiles(resource));
+                files.push(...await collect(resource));
             } catch (error) {
                 Logger.error('downloadallfiles', 'Could not read activity', resource.url);
                 files.push({ ...resource, unreadable: true });
@@ -264,7 +347,7 @@ ${body}
         progressBar.textContent = rounded + '%';
     }
 
-    async function downloadAll(progress, report, structured) {
+    async function downloadAll(progress, report, { structured, linkFormat }) {
         const progressBar = progress.querySelector('.progress-bar');
         const title = sanitize(document.querySelector('div.page-header-headings h1')?.textContent || 'moodle');
 
@@ -285,10 +368,19 @@ ${body}
             try {
                 if (resource.unreadable) throw new Error('Activity could not be read');
                 let path = resource.path;
-                let blob;
-                if (resource.module === 'url' || resource.module === 'page') {
-                    blob = await (resource.module === 'url' ? linkFile(resource) : pageFile(resource));
-                    path = `${sanitize(resource.name) || resource.module}.html`;
+                let blob = resource.blob;
+                const baseName = sanitize(resource.name) || resource.module;
+                if (blob) {
+                    // Already created while collecting (quiz overview)
+                } else if (resource.module === 'url') {
+                    const link = await linkFile(resource, linkFormat);
+                    blob = link.blob;
+                    path = `${baseName}.${link.extension}`;
+                } else if (resource.module === 'page') {
+                    blob = await pageFile(resource);
+                    path = `${baseName}.html`;
+                } else if (resource.module === 'quizreview') {
+                    blob = await quizReviewFile(resource);
                 } else {
                     const download = await fetchFile(resource.url);
                     blob = download.blob;
@@ -351,6 +443,14 @@ ${body}
                     Strukturiertes ZIP (ein Ordner pro Abschnitt)
                 </label>
             </div>
+            <div class="mb-3">
+                <label class="form-label mb-1" for="download-all-links">Links speichern als</label>
+                <!-- custom-select for Bootstrap 4 (moodle.bbbaden.ch), form-select for Bootstrap 5 (lms.bbbaden.ch) -->
+                <select class="form-select custom-select" id="download-all-links">
+                    <option value="html">Webseite (.html, öffnet in jedem Browser)</option>
+                    <option value="url">Verknüpfung (.url, Windows)</option>
+                </select>
+            </div>
             <button class="btn btn-primary">
                 <i class="fa fa-download" aria-hidden="true"></i> Download
             </button>
@@ -362,15 +462,18 @@ ${body}
 
         const button = panel.querySelector('button');
         const structured = panel.querySelector('#download-all-structured');
+        const linkFormat = panel.querySelector('#download-all-links');
         const progress = panel.querySelector('.progress');
         const report = panel.querySelector('.download-report');
 
         button.addEventListener('click', () => {
             button.hidden = true;
             structured.disabled = true;
+            linkFormat.disabled = true;
             progress.hidden = false;
             panel.dataset.busy = 'true';
-            downloadAll(progress, report, structured.checked).finally(() => delete panel.dataset.busy);
+            downloadAll(progress, report, { structured: structured.checked, linkFormat: linkFormat.value })
+                .finally(() => delete panel.dataset.busy);
         }, { once: true });
 
         return panel;
