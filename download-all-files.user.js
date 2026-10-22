@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Download All Files
 // @namespace    http://tampermonkey.net/
-// @version      2.0
+// @version      2.1
 // @description  Download all files of a Moodle course as a zip archive, optionally with a folder per section
 // @author       PianoNic
 // @downloadURL  https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
@@ -26,7 +26,7 @@
     'use strict';
 
     if (UserscriptBridge.registerScript() || !UserscriptBridge.runOnce()) return;
-    Logger.info('downloadallfiles', 'v2.0 - Initializing');
+    Logger.info('downloadallfiles', 'v2.1 - Initializing');
 
     const courseId = new URLSearchParams(window.location.search).get('id');
     const sesskey = document.querySelector('a[href*="logout.php?sesskey="]')?.href.match(/sesskey=([^&]+)/)?.[1];
@@ -185,49 +185,100 @@
         console.table([{ 'Status': 'Success', 'Count': successCount }, { 'Status': 'Failed', 'Count': failed.length }]);
     }
 
-    function createCard() {
-        const section = document.createElement('section');
-        section.className = 'card mb-3';
-        section.innerHTML = `
-            <div class="card-body">
-                <h5 class="card-title">Download All Files</h5>
-                <p class="card-text text-muted">Alle Dateien dieses Kurses als ZIP herunterladen.</p>
-                <div class="form-check mb-3">
-                    <input type="checkbox" class="form-check-input" id="download-all-structured">
-                    <label class="form-check-label" for="download-all-structured">
-                        Strukturiertes ZIP (ein Ordner pro Abschnitt)
-                    </label>
-                </div>
-                <button class="btn btn-primary">
-                    <i class="fa fa-download" aria-hidden="true"></i> Download
-                </button>
-                <div class="progress" style="height: 1.25rem;" hidden>
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
-                         style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
-                </div>
-                <div class="download-report"></div>
-            </div>`;
+    // The download controls, shared by the sidebar card and the navigation dropdown
+    function createPanel() {
+        const panel = document.createElement('div');
+        panel.className = 'card-body';
+        panel.innerHTML = `
+            <h5 class="card-title">Download All Files</h5>
+            <p class="card-text text-muted">Alle Dateien dieses Kurses als ZIP herunterladen.</p>
+            <div class="form-check mb-3">
+                <input type="checkbox" class="form-check-input" id="download-all-structured">
+                <label class="form-check-label" for="download-all-structured">
+                    Strukturiertes ZIP (ein Ordner pro Abschnitt)
+                </label>
+            </div>
+            <button class="btn btn-primary">
+                <i class="fa fa-download" aria-hidden="true"></i> Download
+            </button>
+            <div class="progress" style="height: 1.25rem;" hidden>
+                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                     style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+            </div>
+            <div class="download-report"></div>`;
 
-        const button = section.querySelector('button');
-        const structured = section.querySelector('#download-all-structured');
-        const progress = section.querySelector('.progress');
-        const report = section.querySelector('.download-report');
+        const button = panel.querySelector('button');
+        const structured = panel.querySelector('#download-all-structured');
+        const progress = panel.querySelector('.progress');
+        const report = panel.querySelector('.download-report');
 
         button.addEventListener('click', () => {
             button.hidden = true;
             structured.disabled = true;
             progress.hidden = false;
-            downloadAll(progress, report, structured.checked);
+            panel.dataset.busy = 'true';
+            downloadAll(progress, report, structured.checked).finally(() => delete panel.dataset.busy);
         }, { once: true });
 
+        return panel;
+    }
+
+    function createCard() {
+        const section = document.createElement('section');
+        section.className = 'card mb-3';
+        section.appendChild(createPanel());
         return section;
     }
 
-    // The block drawer only exists when the course has blocks (never on lms.bbbaden.ch),
-    // otherwise put the card on top of the course content.
+    // "Download" tab next to "Mehr" that opens the panel as a dropdown.
+    // The dropdownmoremenu class makes Moodle's more menu (core/moremenu) leave the
+    // item in place instead of moving it into "Mehr" when space runs out.
+    function createNavItem() {
+        const item = document.createElement('li');
+        item.className = 'nav-item dropdown dropdownmoremenu position-relative';
+        item.setAttribute('role', 'none');
+        item.innerHTML = `
+            <a class="nav-link" href="#" role="menuitem" aria-haspopup="true" aria-expanded="false">Download</a>
+            <div class="dropdown-menu dropdown-menu-start p-0 shadow"
+                 style="width: 24rem; max-width: calc(100vw - 16px); left: 0; right: auto; top: 100%;"></div>`;
+
+        const toggle = item.querySelector('a');
+        const menu = item.querySelector('.dropdown-menu');
+        const panel = menu.appendChild(createPanel());
+        panel.classList.add('p-3');
+
+        // Left-aligned with the tab like "Mehr", shifted left only as far as needed to stay on screen
+        const setOpen = open => {
+            menu.classList.toggle('show', open);
+            toggle.setAttribute('aria-expanded', String(open));
+            if (!open) return;
+            menu.style.left = '0px';
+            const overflow = menu.getBoundingClientRect().right - (document.documentElement.clientWidth - 8);
+            if (overflow > 0) menu.style.left = `${-overflow}px`;
+        };
+        toggle.addEventListener('click', event => {
+            event.preventDefault();
+            setOpen(!menu.classList.contains('show'));
+        });
+        // Close on outside click or Escape, but stay open while downloading
+        document.addEventListener('click', event => {
+            if (!item.contains(event.target) && !panel.dataset.busy) setOpen(false);
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && !panel.dataset.busy) setOpen(false);
+        });
+
+        return item;
+    }
+
+    // Sidebar card when the course has a block drawer, otherwise a tab in the course
+    // navigation (lms.bbbaden.ch has no block drawer), otherwise on top of the content.
     const blockRegion = document.getElementById('block-region-side-pre');
+    const courseNav = document.querySelector('.secondary-navigation ul.more-nav');
     if (blockRegion) {
         blockRegion.appendChild(createCard());
+    } else if (courseNav) {
+        courseNav.appendChild(createNavItem());
     } else {
         document.getElementById('region-main')?.prepend(createCard());
     }

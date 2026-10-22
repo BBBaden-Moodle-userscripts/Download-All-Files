@@ -19,7 +19,7 @@ This UserScript allows you to download files from a Moodle course and creates a 
 ## Usage
 
 1. Navigate to a Moodle course page.
-2. Locate the "Download All Files" card in the sidebar, or above the course content if the course has no sidebar.
+2. Locate the "Download All Files" card in the sidebar, or the "Download" tab in the course navigation if the course has no sidebar.
 3. Optionally check "Strukturiertes ZIP" to get one folder per section.
 4. Click the "Download" button to initiate the file download.
 5. A zip archive containing all the files will be generated and downloaded.
