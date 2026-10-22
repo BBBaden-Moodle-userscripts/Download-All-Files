@@ -2,11 +2,13 @@
 
 # Moodle File Downloader UserScript
 
-This UserScript allows you to download files from a Moodle course and creates a zip archive containing all the downloaded files. It is designed to work on Moodle pages that match the specified URL.
+This UserScript allows you to download files from a Moodle course and creates a zip archive containing all the downloaded files. It works on course pages of https://moodle.bbbaden.ch and https://lms.bbbaden.ch.
 
 ## Features
 
-- Combines all files on the current Moodle page into one zip archive.
+- Combines all files of the course into one zip archive, including sections that are only loaded on demand (e.g. the Tiles format).
+- Optional structured zip with one folder per course section.
+- Progress bar and a summary of failed downloads.
 - Provides a convenient "Download All Files" button.
 
 ## Installation
@@ -16,10 +18,11 @@ This UserScript allows you to download files from a Moodle course and creates a 
 
 ## Usage
 
-1. Navigate to the Moodle course page that matches the specified URL.
-2. Locate the "Download All Files" button in the sidebar.
-3. Click the "Download" button to initiate the file download.
-4. A zip archive containing all the files will be generated and downloaded.
+1. Navigate to a Moodle course page.
+2. Locate the "Download All Files" card in the sidebar, or above the course content if the course has no sidebar.
+3. Optionally check "Strukturiertes ZIP" to get one folder per section.
+4. Click the "Download" button to initiate the file download.
+5. A zip archive containing all the files will be generated and downloaded.
 
 ## Screenshots
 
