@@ -8,6 +8,7 @@ This UserScript allows you to download files from a Moodle course and creates a 
 
 - Combines all files and folders of the course into one zip archive, including sections that are only loaded on demand (e.g. the Tiles format).
 - Folders keep their name and subfolders inside the zip.
+- Assignment files: attachments of the task, your own submitted files and feedback files (in the subfolders `Aufgabe`, `Meine Abgabe` and `Feedback`).
 - Pages are saved as `.html` files, links as `.html` files that open the linked website.
 - In the structured zip, subsections are placed inside their parent section.
 - Optional structured zip with one folder per course section.

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Download All Files
 // @namespace    http://tampermonkey.net/
-// @version      2.3
-// @description  Download all files, folders, pages and links of a Moodle course as a zip archive, optionally with a folder per section
+// @version      2.4
+// @description  Download all files, folders, assignment files, pages and links of a Moodle course as a zip archive, optionally with a folder per section
 // @author       PianoNic
 // @downloadURL  https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
 // @updateURL    https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
@@ -26,7 +26,7 @@
     'use strict';
 
     if (UserscriptBridge.registerScript() || !UserscriptBridge.runOnce()) return;
-    Logger.info('downloadallfiles', 'v2.3 - Initializing');
+    Logger.info('downloadallfiles', 'v2.4 - Initializing');
 
     const courseId = new URLSearchParams(window.location.search).get('id');
     const sesskey = document.querySelector('a[href*="logout.php?sesskey="]')?.href.match(/sesskey=([^&]+)/)?.[1];
@@ -42,8 +42,8 @@
         }
     };
 
-    // Files, folders, pages (saved as .html) and links (saved as .html redirecting to the target)
-    const DOWNLOADABLE_MODULES = ['resource', 'folder', 'page', 'url'];
+    // Files, folders, assignment files, pages (saved as .html) and links (saved as .html redirecting to the target)
+    const DOWNLOADABLE_MODULES = ['resource', 'folder', 'assign', 'page', 'url'];
 
     // All files and folders of the course, including sections that are only loaded on demand
     // (e.g. the Tiles format). Uses the same web service as the Moodle 4.0+ course page.
@@ -91,23 +91,51 @@
         });
     }
 
-    // Moodle's own "download folder" zip is unreliable (empty files on lms.bbbaden.ch),
-    // so the files are taken from the folder page, keeping subfolders.
-    async function getFolderFiles(folder) {
-        const doc = await fetchDocument(folder.url);
-        // Only the folder's file tree (not links in its description), only this Moodle's folder files
-        const tree = doc.querySelector('.foldertree') || doc.querySelector('#region-main') || doc;
-        const urls = new Set([...tree.querySelectorAll('a[href*="/mod_folder/content/"]')]
-            .map(a => new URL(a.getAttribute('href'), window.location.origin))
-            .filter(url => url.origin === window.location.origin && /^\/pluginfile\.php\/\d+\/mod_folder\/content\/\d+\//.test(url.pathname))
-            .map(url => url.origin + url.pathname));
+    // Activities whose files are linked on their page. Each pattern matches the file URL path
+    // (group 1 = path inside the area) and names the subfolder inside the activity folder.
+    // Folders: Moodle's own "download folder" zip is unreliable (empty files on lms.bbbaden.ch).
+    const LINKED_FILES = {
+        folder: {
+            fallbackName: 'Ordner',
+            scope: '.foldertree', // Only the file tree, not links in the description
+            patterns: [[/^\/pluginfile\.php\/\d+\/mod_folder\/content\/\d+\/(.+)$/, '']]
+        },
+        assign: {
+            fallbackName: 'Aufgabe',
+            scope: '#region-main',
+            patterns: [
+                [/^\/pluginfile\.php\/\d+\/mod_assign\/introattachment\/\d+\/(.+)$/, 'Aufgabe'],
+                [/^\/pluginfile\.php\/\d+\/assignsubmission_file\/submission_files\/\d+\/(.+)$/, 'Meine Abgabe'],
+                [/^\/pluginfile\.php\/\d+\/assignfeedback_file\/feedback_files\/\d+\/(.+)$/, 'Feedback'],
+                [/^\/pluginfile\.php\/\d+\/assignfeedback_editpdf\/(?:download|combined)\/\d+\/(.+)$/, 'Feedback']
+            ]
+        }
+    };
 
-        const folderName = sanitize(folder.name) || 'Ordner';
-        return [...urls].map(url => {
-            const relative = new URL(url).pathname.replace(/^.*\/mod_folder\/content\/\d+\//, '');
-            const parts = relative.split('/').map(part => sanitize(safeDecode(part)) || 'file');
-            return { ...folder, url: url + '?forcedownload=1', path: [folderName, ...parts].join('/') };
-        });
+    // Only files of this Moodle; every path segment is sanitized
+    async function getLinkedFiles(activity) {
+        const { fallbackName, scope, patterns } = LINKED_FILES[activity.module];
+        const doc = await fetchDocument(activity.url);
+        const root = doc.querySelector(scope) || doc.querySelector('#region-main') || doc;
+        const activityName = sanitize(activity.name) || fallbackName;
+
+        const files = new Map();
+        for (const anchor of root.querySelectorAll('a[href*="/pluginfile.php/"]')) {
+            const url = new URL(anchor.getAttribute('href'), window.location.origin);
+            if (url.origin !== window.location.origin) continue;
+            for (const [pattern, subfolder] of patterns) {
+                const match = url.pathname.match(pattern);
+                if (!match) continue;
+                const parts = match[1].split('/').map(part => sanitize(safeDecode(part)) || 'file');
+                const fileUrl = url.origin + url.pathname;
+                files.set(fileUrl, {
+                    ...activity,
+                    url: fileUrl + '?forcedownload=1',
+                    path: [activityName, subfolder, ...parts].filter(Boolean).join('/')
+                });
+            }
+        }
+        return [...files.values()];
     }
 
     async function fetchDocument(url) {
@@ -157,19 +185,19 @@ ${body}
         return htmlFile(page.name, `<h1>${escapeHtml(page.name)}</h1>\n${content.innerHTML}`);
     }
 
-    // One entry per file to download. Folder files know their path, resources get
-    // their file name from the download response.
+    // One entry per file to download. Folder and assignment files know their path,
+    // resources get their file name from the download response.
     async function getFiles(resources) {
         const files = [];
         for (const resource of resources) {
-            if (resource.module !== 'folder') {
+            if (!LINKED_FILES[resource.module]) {
                 files.push(resource);
                 continue;
             }
             try {
-                files.push(...await getFolderFiles(resource));
+                files.push(...await getLinkedFiles(resource));
             } catch (error) {
-                Logger.error('downloadallfiles', 'Could not read folder', resource.url);
+                Logger.error('downloadallfiles', 'Could not read activity', resource.url);
                 files.push({ ...resource, unreadable: true });
             }
         }
@@ -255,7 +283,7 @@ ${body}
 
         for (const resource of resources) {
             try {
-                if (resource.unreadable) throw new Error('Folder could not be read');
+                if (resource.unreadable) throw new Error('Activity could not be read');
                 let path = resource.path;
                 let blob;
                 if (resource.module === 'url' || resource.module === 'page') {
@@ -269,7 +297,7 @@ ${body}
                 zip.file(uniquePath(structured ? `${resource.folder}/${path}` : path, usedPaths), blob);
                 if (!activityResults.has(resource.id)) activityResults.set(resource.id, true);
             } catch (error) {
-                failed.push(resource.url);
+                failed.push(resource);
                 activityResults.set(resource.id, false);
             }
             setProgress(progressBar, (++done / resources.length) * 100);
@@ -293,10 +321,15 @@ ${body}
         alert.className = `alert ${failed.length ? 'alert-warning' : 'alert-success'} mt-3 mb-0`;
         alert.textContent = `${successCount} von ${resources.length} Dateien heruntergeladen.`;
         if (failed.length) {
+            alert.append(document.createElement('br'), 'Nicht verfügbar (fehlen evtl. auf dem Server):');
             const list = alert.appendChild(document.createElement('ul'));
             list.className = 'mb-0 mt-2';
-            for (const href of failed) {
-                const a = Object.assign(document.createElement('a'), { href, target: '_blank', textContent: href });
+            for (const resource of failed) {
+                const a = Object.assign(document.createElement('a'), {
+                    href: resource.url,
+                    target: '_blank',
+                    textContent: resource.path || resource.name || resource.url
+                });
                 list.appendChild(document.createElement('li')).appendChild(a);
             }
         }
