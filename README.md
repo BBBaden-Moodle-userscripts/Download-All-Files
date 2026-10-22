@@ -6,7 +6,8 @@ This UserScript allows you to download files from a Moodle course and creates a 
 
 ## Features
 
-- Combines all files of the course into one zip archive, including sections that are only loaded on demand (e.g. the Tiles format).
+- Combines all files and folders of the course into one zip archive, including sections that are only loaded on demand (e.g. the Tiles format).
+- Folders keep their name and subfolders inside the zip.
 - Optional structured zip with one folder per course section.
 - Progress bar and a summary of failed downloads.
 - Provides a convenient "Download All Files" button.

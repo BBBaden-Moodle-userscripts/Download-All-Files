@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Download All Files
 // @namespace    http://tampermonkey.net/
-// @version      2.1
-// @description  Download all files of a Moodle course as a zip archive, optionally with a folder per section
+// @version      2.2
+// @description  Download all files and folders of a Moodle course as a zip archive, optionally with a folder per section
 // @author       PianoNic
 // @downloadURL  https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
 // @updateURL    https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
@@ -26,14 +26,25 @@
     'use strict';
 
     if (UserscriptBridge.registerScript() || !UserscriptBridge.runOnce()) return;
-    Logger.info('downloadallfiles', 'v2.1 - Initializing');
+    Logger.info('downloadallfiles', 'v2.2 - Initializing');
 
     const courseId = new URLSearchParams(window.location.search).get('id');
     const sesskey = document.querySelector('a[href*="logout.php?sesskey="]')?.href.match(/sesskey=([^&]+)/)?.[1];
 
     const sanitize = name => name.replace(/[\\/:"*?<>|]/g, '').replace(/\s+/g, ' ').trim();
 
-    // All files of the course, including sections that are only loaded on demand
+    const safeDecode = text => {
+        try {
+            return decodeURIComponent(text);
+        } catch (error) {
+            return text; // Not percent-encoded, keep as is
+        }
+    };
+
+    // Files (mod_resource) and folders (mod_folder) are downloaded
+    const DOWNLOADABLE_MODULES = ['resource', 'folder'];
+
+    // All files and folders of the course, including sections that are only loaded on demand
     // (e.g. the Tiles format). Uses the same web service as the Moodle 4.0+ course page.
     async function getResourcesFromService() {
         const response = await fetch(`/lib/ajax/service.php?sesskey=${sesskey}&info=core_courseformat_get_state`, {
@@ -46,22 +57,64 @@
         const state = JSON.parse(result.data);
         const sections = new Map(state.section.map(section => [String(section.id), section]));
         return state.cm
-            .filter(cm => cm.module === 'resource' && cm.uservisible)
+            .filter(cm => DOWNLOADABLE_MODULES.includes(cm.module) && cm.uservisible)
             .map(cm => {
                 const section = sections.get(String(cm.sectionid));
                 const number = String(section?.number ?? cm.sectionnumber ?? 0).padStart(2, '0');
-                return { id: cm.id, url: cm.url, folder: sanitize(`${number} ${section?.title || ''}`) };
+                return { id: cm.id, url: cm.url, module: cm.module, name: cm.name, folder: sanitize(`${number} ${section?.title || ''}`) };
             });
     }
 
     // Fallback: only the activities rendered on the current page
     function getResourcesFromPage() {
-        return [...document.querySelectorAll('a.aalink.stretched-link[href*="mod/resource"]')].map(anchor => {
+        return [...document.querySelectorAll('a.aalink.stretched-link[href*="mod/resource"], a.aalink.stretched-link[href*="mod/folder"]')].map(anchor => {
             const section = anchor.closest('li.section');
             const title = section?.querySelector('.sectionname')?.textContent || '';
             const number = String(section?.dataset.section ?? 0).padStart(2, '0');
-            return { id: new URL(anchor.href).searchParams.get('id'), url: anchor.href, folder: sanitize(`${number} ${title}`) };
+            return {
+                id: new URL(anchor.href).searchParams.get('id'),
+                url: anchor.href,
+                module: anchor.href.includes('mod/folder') ? 'folder' : 'resource',
+                name: anchor.querySelector('.instancename')?.firstChild?.textContent || '',
+                folder: sanitize(`${number} ${title}`)
+            };
         });
+    }
+
+    // Moodle's own "download folder" zip is unreliable (empty files on lms.bbbaden.ch),
+    // so the files are taken from the folder page, keeping subfolders.
+    async function getFolderFiles(folder) {
+        const html = await (await fetch(folder.url)).text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const urls = new Set([...doc.querySelectorAll('a[href*="/mod_folder/content/"]')]
+            .map(a => new URL(a.getAttribute('href'), window.location.origin))
+            .map(url => url.origin + url.pathname));
+
+        const folderName = sanitize(folder.name) || 'Ordner';
+        return [...urls].map(url => {
+            const relative = new URL(url).pathname.replace(/^.*\/mod_folder\/content\/\d+\//, '');
+            const parts = relative.split('/').map(part => sanitize(safeDecode(part)) || 'file');
+            return { ...folder, url: url + '?forcedownload=1', path: [folderName, ...parts].join('/') };
+        });
+    }
+
+    // One entry per file to download. Folder files know their path, resources get
+    // their file name from the download response.
+    async function getFiles(resources) {
+        const files = [];
+        for (const resource of resources) {
+            if (resource.module !== 'folder') {
+                files.push(resource);
+                continue;
+            }
+            try {
+                files.push(...await getFolderFiles(resource));
+            } catch (error) {
+                Logger.error('downloadallfiles', 'Could not read folder', resource.url);
+                files.push({ ...resource, unreadable: true });
+            }
+        }
+        return files;
     }
 
     async function getResources() {
@@ -94,13 +147,8 @@
     function getFileName(response) {
         const header = decodeUtf8(response.headers.get('content-disposition') || '');
         const match = header.match(/filename\*=UTF-8''([^;]+)/i) || header.match(/filename="?([^";]+)"?/i);
-        let name = match ? match[1] : new URL(response.url).pathname.split('/').pop();
-        try {
-            name = decodeURIComponent(name);
-        } catch (error) {
-            // Not percent-encoded, keep as is
-        }
-        return sanitize(name) || 'file';
+        const name = match ? match[1] : new URL(response.url).pathname.split('/').pop();
+        return sanitize(safeDecode(name)) || 'file';
     }
 
     // Two files with the same name would overwrite each other in the archive
@@ -133,7 +181,7 @@
         const progressBar = progress.querySelector('.progress-bar');
         const title = sanitize(document.querySelector('div.page-header-headings h1')?.textContent || 'moodle');
 
-        const resources = await getResources();
+        const resources = await getFiles(await getResources());
         if (!resources.length) {
             progress.hidden = true;
             report.innerHTML = '<div class="alert alert-info mt-3 mb-0">Keine Dateien in diesem Kurs gefunden.</div>';
@@ -143,22 +191,27 @@
         const zip = new JSZip();
         const usedPaths = new Set();
         const failed = [];
+        const activityResults = new Map(); // activity id -> all its files succeeded
         let done = 0;
 
         for (const resource of resources) {
-            // Only present when the activity is rendered on the current page
-            const activity = document.querySelector(`#module-${resource.id} .activity-grid`);
             try {
+                if (resource.unreadable) throw new Error('Folder could not be read');
                 const { response, blob } = await fetchFile(resource.url);
-                const fileName = getFileName(response);
-                zip.file(uniquePath(structured ? `${resource.folder}/${fileName}` : fileName, usedPaths), blob);
-                activity?.append(statusBadge(true));
+                const path = resource.path || getFileName(response);
+                zip.file(uniquePath(structured ? `${resource.folder}/${path}` : path, usedPaths), blob);
+                if (!activityResults.has(resource.id)) activityResults.set(resource.id, true);
             } catch (error) {
                 failed.push(resource.url);
-                activity?.append(statusBadge(false));
+                activityResults.set(resource.id, false);
             }
             setProgress(progressBar, (++done / resources.length) * 100);
         }
+
+        // Only present when the activity is rendered on the current page
+        activityResults.forEach((success, id) => {
+            document.querySelector(`#module-${id} .activity-grid`)?.append(statusBadge(success));
+        });
 
         const link = document.createElement('a');
         link.href = URL.createObjectURL(await zip.generateAsync({ type: 'blob' }));
