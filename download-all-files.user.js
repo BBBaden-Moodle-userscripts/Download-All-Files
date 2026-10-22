@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Download All Files
 // @namespace    http://tampermonkey.net/
-// @version      2.2
-// @description  Download all files and folders of a Moodle course as a zip archive, optionally with a folder per section
+// @version      2.3
+// @description  Download all files, folders, pages and links of a Moodle course as a zip archive, optionally with a folder per section
 // @author       PianoNic
 // @downloadURL  https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
 // @updateURL    https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
@@ -26,12 +26,13 @@
     'use strict';
 
     if (UserscriptBridge.registerScript() || !UserscriptBridge.runOnce()) return;
-    Logger.info('downloadallfiles', 'v2.2 - Initializing');
+    Logger.info('downloadallfiles', 'v2.3 - Initializing');
 
     const courseId = new URLSearchParams(window.location.search).get('id');
     const sesskey = document.querySelector('a[href*="logout.php?sesskey="]')?.href.match(/sesskey=([^&]+)/)?.[1];
 
-    const sanitize = name => name.replace(/[\\/:"*?<>|]/g, '').replace(/\s+/g, ' ').trim();
+    // Also strips leading/trailing dots, so no "." or ".." path segment can reach the zip
+    const sanitize = name => name.replace(/[\\/:"*?<>|]/g, '').replace(/\s+/g, ' ').trim().replace(/^\.+|\.+$/g, '').trim();
 
     const safeDecode = text => {
         try {
@@ -41,8 +42,8 @@
         }
     };
 
-    // Files (mod_resource) and folders (mod_folder) are downloaded
-    const DOWNLOADABLE_MODULES = ['resource', 'folder'];
+    // Files, folders, pages (saved as .html) and links (saved as .html redirecting to the target)
+    const DOWNLOADABLE_MODULES = ['resource', 'folder', 'page', 'url'];
 
     // All files and folders of the course, including sections that are only loaded on demand
     // (e.g. the Tiles format). Uses the same web service as the Moodle 4.0+ course page.
@@ -56,25 +57,34 @@
 
         const state = JSON.parse(result.data);
         const sections = new Map(state.section.map(section => [String(section.id), section]));
+
+        // Subsections (Moodle 5) are nested inside the folder of their parent section
+        const sectionFolder = section => {
+            const parent = section.component === 'mod_subsection' && sections.get(String(section.parentsectionid));
+            if (parent) return `${sectionFolder(parent)}/${sanitize(section.title) || 'Unterabschnitt'}`;
+            return sanitize(`${String(section.number).padStart(2, '0')} ${section.title || ''}`);
+        };
+
         return state.cm
             .filter(cm => DOWNLOADABLE_MODULES.includes(cm.module) && cm.uservisible)
             .map(cm => {
                 const section = sections.get(String(cm.sectionid));
-                const number = String(section?.number ?? cm.sectionnumber ?? 0).padStart(2, '0');
-                return { id: cm.id, url: cm.url, module: cm.module, name: cm.name, folder: sanitize(`${number} ${section?.title || ''}`) };
+                const folder = section ? sectionFolder(section) : String(cm.sectionnumber ?? 0).padStart(2, '0');
+                return { id: cm.id, url: cm.url, module: cm.module, name: cm.name, folder };
             });
     }
 
     // Fallback: only the activities rendered on the current page
     function getResourcesFromPage() {
-        return [...document.querySelectorAll('a.aalink.stretched-link[href*="mod/resource"], a.aalink.stretched-link[href*="mod/folder"]')].map(anchor => {
+        const selector = DOWNLOADABLE_MODULES.map(module => `a.aalink.stretched-link[href*="mod/${module}/view.php"]`).join(', ');
+        return [...document.querySelectorAll(selector)].map(anchor => {
             const section = anchor.closest('li.section');
             const title = section?.querySelector('.sectionname')?.textContent || '';
             const number = String(section?.dataset.section ?? 0).padStart(2, '0');
             return {
                 id: new URL(anchor.href).searchParams.get('id'),
                 url: anchor.href,
-                module: anchor.href.includes('mod/folder') ? 'folder' : 'resource',
+                module: anchor.href.match(/mod\/(\w+)\/view\.php/)[1],
                 name: anchor.querySelector('.instancename')?.firstChild?.textContent || '',
                 folder: sanitize(`${number} ${title}`)
             };
@@ -84,10 +94,12 @@
     // Moodle's own "download folder" zip is unreliable (empty files on lms.bbbaden.ch),
     // so the files are taken from the folder page, keeping subfolders.
     async function getFolderFiles(folder) {
-        const html = await (await fetch(folder.url)).text();
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        const urls = new Set([...doc.querySelectorAll('a[href*="/mod_folder/content/"]')]
+        const doc = await fetchDocument(folder.url);
+        // Only the folder's file tree (not links in its description), only this Moodle's folder files
+        const tree = doc.querySelector('.foldertree') || doc.querySelector('#region-main') || doc;
+        const urls = new Set([...tree.querySelectorAll('a[href*="/mod_folder/content/"]')]
             .map(a => new URL(a.getAttribute('href'), window.location.origin))
+            .filter(url => url.origin === window.location.origin && /^\/pluginfile\.php\/\d+\/mod_folder\/content\/\d+\//.test(url.pathname))
             .map(url => url.origin + url.pathname));
 
         const folderName = sanitize(folder.name) || 'Ordner';
@@ -96,6 +108,53 @@
             const parts = relative.split('/').map(part => sanitize(safeDecode(part)) || 'file');
             return { ...folder, url: url + '?forcedownload=1', path: [folderName, ...parts].join('/') };
         });
+    }
+
+    async function fetchDocument(url) {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Status code: ${response.status}`);
+        return new DOMParser().parseFromString(await response.text(), 'text/html');
+    }
+
+    const escapeHtml = text => text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+
+    function htmlFile(title, body, head = '') {
+        const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(title)}</title>
+${head}
+</head>
+<body>
+${body}
+</body>
+</html>
+`;
+        return new Blob([html], { type: 'text/html' });
+    }
+
+    // forceview shows Moodle's link page instead of redirecting to the (cross-origin) target
+    async function linkFile(link) {
+        let target = link.url;
+        try {
+            const doc = await fetchDocument(link.url + '&forceview=1');
+            const found = doc.querySelector('.urlworkaround a[href], #region-main iframe[src], #region-main object[data]');
+            target = found?.getAttribute('href') || found?.getAttribute('src') || found?.getAttribute('data') || target;
+        } catch (error) {
+            Logger.warn('downloadallfiles', 'Could not read link target, linking to Moodle instead', link.url);
+        }
+        const safeTarget = escapeHtml(target);
+        return htmlFile(link.name, `<p><a href="${safeTarget}">${safeTarget}</a></p>`,
+            `<meta http-equiv="refresh" content="0; url=${safeTarget}">`);
+    }
+
+    // Images and links inside the page still point to Moodle and need a login
+    async function pageFile(page) {
+        const doc = await fetchDocument(page.url);
+        const content = doc.querySelector('#region-main .box.generalbox') || doc.querySelector('#region-main [role="main"]');
+        if (!content) throw new Error('Page content not found');
+        return htmlFile(page.name, `<h1>${escapeHtml(page.name)}</h1>\n${content.innerHTML}`);
     }
 
     // One entry per file to download. Folder files know their path, resources get
@@ -197,8 +256,16 @@
         for (const resource of resources) {
             try {
                 if (resource.unreadable) throw new Error('Folder could not be read');
-                const { response, blob } = await fetchFile(resource.url);
-                const path = resource.path || getFileName(response);
+                let path = resource.path;
+                let blob;
+                if (resource.module === 'url' || resource.module === 'page') {
+                    blob = await (resource.module === 'url' ? linkFile(resource) : pageFile(resource));
+                    path = `${sanitize(resource.name) || resource.module}.html`;
+                } else {
+                    const download = await fetchFile(resource.url);
+                    blob = download.blob;
+                    path = path || getFileName(download.response);
+                }
                 zip.file(uniquePath(structured ? `${resource.folder}/${path}` : path, usedPaths), blob);
                 if (!activityResults.has(resource.id)) activityResults.set(resource.id, true);
             } catch (error) {
