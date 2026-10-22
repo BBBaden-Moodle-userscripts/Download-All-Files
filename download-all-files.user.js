@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Download All Files
 // @namespace    http://tampermonkey.net/
-// @version      2.5
+// @version      2.5.1
 // @description  Download all files, folders, assignment files, quiz results, pages and links of a Moodle course as a zip archive, optionally with a folder per section
 // @author       PianoNic
 // @downloadURL  https://github.com/BBBaden-Moodle-userscripts/Download-All-Files/raw/main/download-all-files.user.js
@@ -26,7 +26,7 @@
     'use strict';
 
     if (UserscriptBridge.registerScript() || !UserscriptBridge.runOnce()) return;
-    Logger.info('downloadallfiles', 'v2.5 - Initializing');
+    Logger.info('downloadallfiles', 'v2.5.1 - Initializing');
 
     const courseId = new URLSearchParams(window.location.search).get('id');
     const sesskey = document.querySelector('a[href*="logout.php?sesskey="]')?.href.match(/sesskey=([^&]+)/)?.[1];
@@ -198,16 +198,21 @@ ${body}
         return htmlFile(title, `<div class="container py-4">\n${clone.innerHTML}\n</div>`, styles);
     }
 
+    // Only web addresses: a file:, javascript: or similar target in a .url shortcut
+    // or redirect could run something locally, so those link to Moodle instead
     async function getLinkTarget(link) {
         try {
             // forceview shows Moodle's link page instead of redirecting to the (cross-origin) target
             const doc = await fetchDocument(link.url + '&forceview=1');
             const found = doc.querySelector('.urlworkaround a[href], #region-main iframe[src], #region-main object[data]');
-            return found?.getAttribute('href') || found?.getAttribute('src') || found?.getAttribute('data') || link.url;
+            const target = found?.getAttribute('href') || found?.getAttribute('src') || found?.getAttribute('data');
+            const url = target && new URL(target, window.location.origin);
+            if (url && (url.protocol === 'http:' || url.protocol === 'https:')) return url.href;
+            if (target) Logger.warn('downloadallfiles', 'Link target is not a web address, linking to Moodle instead', link.url);
         } catch (error) {
             Logger.warn('downloadallfiles', 'Could not read link target, linking to Moodle instead', link.url);
-            return link.url;
         }
+        return link.url;
     }
 
     // "html": page that opens the target in any browser, "url": Internet shortcut (Windows)
